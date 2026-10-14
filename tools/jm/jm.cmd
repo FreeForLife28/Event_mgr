@@ -2,7 +2,7 @@
 setlocal
 if not exist "%~dp0src\Jm.java" goto installed
 if not defined TEMP goto no_temp
-set "JM_CACHE=%TEMP%\Gatherly-jm-%RANDOM%-%RANDOM%"
+set "JM_CACHE=%TEMP%\VolunteerHub-jm-%RANDOM%-%RANDOM%"
 mkdir "%JM_CACHE%" >nul 2>&1
 if errorlevel 1 goto no_cache
 javac --release 11 -encoding UTF-8 -d "%JM_CACHE%" "%~dp0src\Jm.java"

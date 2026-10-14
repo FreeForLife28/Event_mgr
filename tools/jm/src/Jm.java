@@ -61,12 +61,12 @@ public final class Jm {
                 migrateDatabase(project, args[1]);
                 return;
             }
-            if (args.length == 0 || !"run".equalsIgnoreCase(args[0]) || args.length > 2) {
-                throw new IllegalArgumentException("Usage: jm init | jm migrate <database_name> | jm run [war-file]");
+            if (args.length != 2 || !"run".equalsIgnoreCase(args[0])) {
+                throw new IllegalArgumentException("Usage: jm init | jm migrate <database_name> | jm run <war-file>");
             }
 
             Path project = findProjectRoot(Paths.get("").toAbsolutePath());
-            String warName = args.length == 1 ? "main.war" : Paths.get(args[1]).getFileName().toString();
+            String warName = Paths.get(args[1]).getFileName().toString();
             if (!warName.toLowerCase(Locale.ROOT).endsWith(".war")) {
                 throw new IllegalArgumentException("Expected a .war file name.");
             }
@@ -103,7 +103,7 @@ public final class Jm {
         String jdbcUrl = System.getenv("DB_URL");
         if (jdbcUrl == null || jdbcUrl.isEmpty()) {
             jdbcUrl = properties.getProperty("db.url",
-                    "jdbc:mysql://localhost:3306/event_mgr_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC");
+                    "jdbc:mysql://localhost:3306/volunteer_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC");
         }
         Matcher matcher = MYSQL_DATABASE_URL.matcher(jdbcUrl);
         if (!matcher.find()) {
@@ -137,7 +137,7 @@ public final class Jm {
         }
         boolean useEnvironmentCredentials = configuredUser != null && !configuredUser.isEmpty();
         String appUser = useEnvironmentCredentials ? configuredUser
-                : properties.getProperty("db.user", "event_mgr_app");
+                : properties.getProperty("db.user", "volunteer_app");
         String appPassword = useEnvironmentCredentials ? configuredPassword
                 : properties.getProperty("db.password");
         if (appPassword == null || appPassword.trim().isEmpty() || "CHANGE_ME".equals(appPassword)) {
@@ -202,7 +202,7 @@ public final class Jm {
         properties.setProperty("db.password", appPassword);
         Files.createDirectories(config.getParent());
         try (java.io.OutputStream output = Files.newOutputStream(config)) {
-            properties.store(output, "Local Gatherly database configuration");
+            properties.store(output, "Local VolunteerHub database configuration");
         }
         System.out.println("Database migration completed.");
         System.out.println("Database connected successfully: " + databaseName);
@@ -448,7 +448,7 @@ public final class Jm {
         Path settingsFile = project.resolve(".jm/tools.properties");
         Files.createDirectories(settingsFile.getParent());
         try (java.io.OutputStream output = Files.newOutputStream(settingsFile)) {
-            settings.store(output, "Local Gatherly tool locations");
+            settings.store(output, "Local VolunteerHub tool locations");
         }
     }
 
@@ -573,7 +573,7 @@ public final class Jm {
                 return current;
             }
         }
-        throw new IllegalStateException("Run jm from the Event_mgr project folder or one of its subfolders.");
+        throw new IllegalStateException("Run jm from the VolunteerHub project folder or one of its subfolders.");
     }
 
     private static String requireDatabaseConfiguration(Path project) throws IOException {
@@ -767,7 +767,7 @@ public final class Jm {
     }
 
     private static void runMaven(Path project) throws Exception {
-        System.out.println("Building Gatherly with Maven...");
+        System.out.println("Building VolunteerHub with Maven...");
         Properties settings = loadToolSettings(project);
         Path mavenCommand = findMavenCommand(settings);
         if (mavenCommand == null) throw new IllegalStateException("Maven is missing. Run jm init first.");
@@ -800,9 +800,9 @@ public final class Jm {
         int port = findHttpPort(tomcat);
         String context = warName.substring(0, warName.length() - 4);
         String appUrl = "http://localhost:" + port + ("/".equals(context) ? "/" : "/" + context + "/");
-        System.out.println("Waiting for Gatherly at " + appUrl + " ...");
+        System.out.println("Waiting for VolunteerHub at " + appUrl + " ...");
         waitForApplication(appUrl);
-        System.out.println("Gatherly is running on port " + port + ".");
+        System.out.println("VolunteerHub is running on port " + port + ".");
         System.out.println("Application URL: " + appUrl);
         openBrowser(appUrl);
     }
@@ -877,7 +877,7 @@ public final class Jm {
             }
             Thread.sleep(1000);
         }
-        throw new IllegalStateException("Gatherly did not become available within 120 seconds. Last result: "
+        throw new IllegalStateException("VolunteerHub did not become available within 120 seconds. Last result: "
                 + lastFailure + ". "
                 + "Check Tomcat logs under the configured Tomcat folder's logs directory.");
     }
@@ -895,7 +895,7 @@ public final class Jm {
                     new ProcessBuilder("xdg-open", appUrl).start();
                 }
             }
-            System.out.println("Opened Gatherly in your default browser.");
+            System.out.println("Opened VolunteerHub in your default browser.");
         } catch (Exception e) {
             System.err.println("Could not open a browser automatically: " + e.getMessage());
             System.err.println("Open this URL manually: " + appUrl);
