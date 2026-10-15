@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 
 $source = Join-Path $PSScriptRoot 'src\Jm.java'
 $launcher = Join-Path $PSScriptRoot 'jm.cmd'
-$installDirectory = Join-Path $env:LOCALAPPDATA 'VolunteerHub\jm'
+$installDirectory = Join-Path $env:LOCALAPPDATA 'main\jm'
 $classesDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ("volunteer-jm-" + [guid]::NewGuid().ToString('N'))
 $jarPath = Join-Path $installDirectory 'jm.jar'
 

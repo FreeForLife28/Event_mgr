@@ -2,6 +2,7 @@ import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
@@ -317,8 +318,41 @@ public final class Jm {
         settings.setProperty("maven.cmd", mavenCommand.toString());
         settings.setProperty("tomcat.home", tomcatHome.toString());
         saveToolSettings(project, settings);
+        configureWindowsToolEnvironment(mavenCommand, tomcatHome);
         initDependencies(project, mavenCommand);
         System.out.println("Environment initialized. Next run: jm migrate <database_name>");
+    }
+
+    private static void configureWindowsToolEnvironment(Path mavenCommand, Path tomcatHome) throws Exception {
+        if (!WINDOWS) return;
+
+        Path mavenHome = mavenCommand.getParent().getParent().toAbsolutePath().normalize();
+        String script = "$ErrorActionPreference = 'Stop'; " +
+                "$mavenHome = " + powershellLiteral(mavenHome.toString()) + "; " +
+                "$tomcatHome = " + powershellLiteral(tomcatHome.toAbsolutePath().normalize().toString()) + "; " +
+                "$path = [Environment]::GetEnvironmentVariable('Path', 'User'); " +
+                "$entries = @(); if ($path) { $entries = @($path -split ';' | Where-Object { $_ }) }; " +
+                "$entries = @($entries | Where-Object { $entry = $_.TrimEnd('\\'); " +
+                "$entry -notlike '*\\.jm\\tools\\apache-maven-*\\bin' -and " +
+                "$entry -notlike '*\\.jm\\tools\\apache-tomcat-*\\bin' }); " +
+                "$managed = @($mavenHome + '\\bin', $tomcatHome + '\\bin'); " +
+                "[Environment]::SetEnvironmentVariable('MAVEN_HOME', $mavenHome, 'User'); " +
+                "[Environment]::SetEnvironmentVariable('M2_HOME', $mavenHome, 'User'); " +
+                "[Environment]::SetEnvironmentVariable('CATALINA_HOME', $tomcatHome, 'User'); " +
+                "[Environment]::SetEnvironmentVariable('TOMCAT_HOME', $tomcatHome, 'User'); " +
+                "[Environment]::SetEnvironmentVariable('Path', (@($managed + $entries) -join ';'), 'User')";
+        int exitCode = new ProcessBuilder("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
+                .inheritIO().start().waitFor();
+        if (exitCode != 0) {
+            throw new IllegalStateException("Could not configure the user Maven/Tomcat environment (PowerShell exit code "
+                    + exitCode + ").");
+        }
+        System.out.println("Configured user MAVEN_HOME, M2_HOME, CATALINA_HOME, TOMCAT_HOME, and PATH.");
+        System.out.println("Restart VS Code to load these environment settings in new terminals.");
+    }
+
+    private static String powershellLiteral(String value) {
+        return "'" + value.replace("'", "''") + "'";
     }
 
     private static void ensurePom(Path project) throws IOException {
@@ -350,8 +384,8 @@ public final class Jm {
         Path archive = downloads.resolve(fileName);
         Path checksumFile = downloads.resolve(fileName + ".sha512");
         System.out.println("Downloading " + fileName + " from Apache...");
-        download(archiveUrl, archive);
-        download(checksumUrl, checksumFile);
+        download(archiveUrl, archive, true);
+        download(checksumUrl, checksumFile, false);
         String downloadedChecksum = readSha512(checksumFile);
         String actualChecksum = sha512(archive);
         if (!actualChecksum.equalsIgnoreCase(downloadedChecksum)
@@ -370,7 +404,7 @@ public final class Jm {
         return home;
     }
 
-    private static void download(String url, Path destination) throws IOException {
+    private static void download(String url, Path destination, boolean showProgress) throws IOException {
         HttpURLConnection connection = (HttpURLConnection) URI.create(url).toURL().openConnection();
         connection.setConnectTimeout(20000);
         connection.setReadTimeout(120000);
@@ -380,12 +414,70 @@ public final class Jm {
             if (status < 200 || status >= 300) {
                 throw new IOException("Download failed with HTTP " + status + ": " + url);
             }
-            try (InputStream input = connection.getInputStream()) {
-                Files.copy(input, destination, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+
+            long totalBytes = connection.getContentLengthLong();
+            long downloadedBytes = 0;
+            long lastProgressUpdate = 0;
+            boolean progressPrinted = false;
+            try (InputStream input = connection.getInputStream();
+                    OutputStream output = Files.newOutputStream(destination)) {
+                byte[] buffer = new byte[16 * 1024];
+                int count;
+                while ((count = input.read(buffer)) != -1) {
+                    output.write(buffer, 0, count);
+                    downloadedBytes += count;
+                    long now = System.nanoTime();
+                    if (showProgress && now - lastProgressUpdate >= 100_000_000L) {
+                        printDownloadProgress(destination.getFileName().toString(), downloadedBytes, totalBytes, false);
+                        progressPrinted = true;
+                        lastProgressUpdate = now;
+                    }
+                }
+            } catch (IOException e) {
+                if (progressPrinted) System.out.println();
+                throw new IOException("Download of " + destination.getFileName() + " failed after "
+                        + formatDownloadSize(downloadedBytes) + ": " + e.getMessage(), e);
+            }
+            if (showProgress) {
+                printDownloadProgress(destination.getFileName().toString(), downloadedBytes, totalBytes, true);
+                System.out.println();
             }
         } finally {
             connection.disconnect();
         }
+    }
+
+    private static void printDownloadProgress(String fileName, long downloadedBytes, long totalBytes, boolean complete) {
+        int width = 28;
+        StringBuilder bar = new StringBuilder(width);
+        String progressText;
+        if (totalBytes > 0) {
+            int percent = complete ? 100 : (int) Math.min(100, downloadedBytes * 100.0 / totalBytes);
+            int filled = percent * width / 100;
+            for (int i = 0; i < width; i++) bar.append(i < filled ? '#' : '-');
+            progressText = String.format(Locale.ROOT, "%3d%%  %s / %s", percent,
+                    formatDownloadSize(downloadedBytes), formatDownloadSize(totalBytes));
+        } else {
+            int marker = complete ? width - 1 : (int) ((downloadedBytes / (512 * 1024)) % width);
+            for (int i = 0; i < width; i++) {
+                bar.append(complete || i == marker ? '#' : '-');
+            }
+            progressText = formatDownloadSize(downloadedBytes) + " downloaded";
+        }
+        System.out.print("\rDownloading " + fileName + " [" + bar + "] " + progressText);
+        System.out.flush();
+    }
+
+    private static String formatDownloadSize(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        String[] units = { "KB", "MB", "GB", "TB" };
+        double size = bytes;
+        int unit = -1;
+        do {
+            size /= 1024.0;
+            unit++;
+        } while (size >= 1024.0 && unit < units.length - 1);
+        return String.format(Locale.ROOT, "%.1f %s", size, units[unit]);
     }
 
     private static String readSha512(Path checksumFile) throws IOException {

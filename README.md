@@ -19,7 +19,7 @@ jm migrate event_mgr_db
 jm run
 ```
 
-On Windows, `jm.cmd` is also available if `jm` is not on PATH. `jm init` downloads Maven and Tomcat 9 into the ignored `.jm` folder when needed. `jm migrate` creates the database, applies `database/schema.sql`, provisions the application account, and writes local credentials to `src/main/resources/db.properties`. MySQL administrator credentials are requested by the migration command. `jm run` builds `target/main.war`, deploys it to Tomcat, and opens the app. You can also pass an explicit WAR name, such as `jm run main.war`.
+On Windows, `jm.cmd` is also available if `jm` is not on PATH. `jm init` downloads Maven and Tomcat 9 into the ignored `.jm` folder when needed, then sets the current user's `MAVEN_HOME`, `M2_HOME`, `CATALINA_HOME`, and `TOMCAT_HOME` variables and adds their `bin` folders to PATH. Restart VS Code after initialization so new terminals load those settings. `jm migrate` creates the database, applies `database/schema.sql`, provisions the application account, and writes local credentials to `src/main/resources/db.properties`. MySQL administrator credentials are requested by the migration command. `jm run` builds `target/main.war`, deploys it to Tomcat, and opens the app. You can also pass an explicit WAR name, such as `jm run main.war`.
 
 Set `JM_DB_ADMIN_USER` if your MySQL administrator is not `root`. Set both `DB_USER` and `DB_PASSWORD` to use an existing application account. `DB_URL`, `DB_USER`, and `DB_PASSWORD` can also override the app configuration at runtime. Keep `db.properties` private; it is included in the built WAR.
 
